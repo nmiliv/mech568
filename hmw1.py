@@ -2,6 +2,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import time
+import scipy.ndimage as spn
 
 # AI use: I occasionally used it to refresh my memory of mathematical operation
 # names, such as the Vandermonde matrix used in calculating finite difference
@@ -113,37 +114,111 @@ def sim_explicit(tstep, maxt, L_points):
 
 # sim_explicit(0.001, 0.05, 51)
 
-def iterate_implicit(row, lastrow, boundary, xpos, t_now, t_row, t_lastrow):
-    # ok and now i'm lazy and gonna do constant order but maybe I'll make a
-    # general solution later?
-    # dep_stencil = np.array([1, -(2+xstep**2/c**2/tstep**2), 1])
-    # indep_stencil = xstep**2/c**2/tstep**2 * np.array([1, -2])
+def iterate_implicit(rows, boundary, boundx, xposs, t_now, t_rows, optimize_xpos=False, plotting=False):
+    # alrughty so expected inputs
+    # rows is the last n rows of the simulation, where n is the order. rows[0]
+    # is the oldest, and rows[n-1] is the newest. the output of this function
+    # would be rows[n]
+    # boundary is the boundary conditions, and boundx is the locations of the
+    # boundary values
+    # xposs is the x positions represented by rows, same order as rows
+    # t_now is the time to calculate
+    # t_rows is the timestamps of the rows (rows[0] occurs at t_rows[0])
+    # returns newrow (new set of pressure values) and the xpos of that new row
+    # this function will try to optimize the distribution of xpos on each
+    # iteration, while keeping the number of xpoints the same
+
+    newxpos = xposs[-1]
+    if optimize_xpos:
+        first_deriv = np.gradient(rows[-1])/np.gradient(xposs[-1])
+        second_deriv = np.gradient(first_deriv)/np.gradient(xposs[-1])
+        third_deriv = np.gradient(second_deriv)/np.gradient(xposs[-1])
+        cdf = np.cumsum(np.abs(third_deriv) * np.hstack(([0], np.diff(xposs[-1]))))
+        cdf_blur = spn.gaussian_filter1d(cdf, 30 * c * (t_now - t_rows[-1]), mode='nearest')
+        # print(f"Gaussian sigma: {30 * c * (t_now - t_rows[-1])}")
+        if cdf_blur[-1] != np.max(cdf_blur):
+            breakpoint()
+        if cdf_blur[-1] != 0:
+            cdf_blur = cdf_blur - cdf_blur[0]
+            cdf_blur = cdf_blur + np.linspace(0, cdf_blur[-1]*3.0, len(xposs[-1])) # introduce a little slope to encourage allocation of points to otherwise "unsimulated" regions
+            cdf_blur = cdf_blur / cdf_blur[-1] # normalize
+            cdf = cdf - cdf[0]
+            cdf = cdf + np.linspace(0, cdf[-1]*0.5, len(xposs[-1])) # introduce a little slope to encourage allocation of points to otherwise "unsimulated" regions
+            cdf = cdf / cdf[-1] # normalize
+            newxpos = np.interp(np.linspace(0, 1, len(xposs[-1])), cdf_blur, xposs[-1]) # inverse interpolation
+            newxpos[0] = xposs[-1][0]
+            newxpos[-1] = xposs[-1][-1] # force these to be equal
+        else:
+            # breakpoint()
+            newxpos = xposs[-1] # if we can't find a new spacing, just use the old one
+
+    newboundary = np.interp(newxpos, boundx, boundary)
     # Kx=b
-    K = np.identity(len(row)) # start with identity, then fill in relations
+    K = np.identity(len(rows[-1])) # start with identity, then fill in relations
     b = [] # build this one out
-    for index in np.arange(len(row)):
-        if np.isnan(boundary[index]):
-            xstencil = [xpos[index-1] - xpos[index], 0, xpos[index+1] - xpos[index]] # TODO add a check to make sure we aren't going over a boundary condition somewhere...
+    for index in np.arange(len(newxpos)):
+        if np.isnan(newboundary[index]):
+            # need to find n (start with 3) points in previous row that are
+            # closest to our point of interest
+            xpos_current = newxpos[index]
+            indices = np.sort(np.argsort(np.abs(xposs[-1] - xpos_current))[:3]) # i mean there is a faster way to do this but i'm lazy'
+            xstencil = [newxpos[index-1], newxpos[index], newxpos[index+1]] - xpos_current # interestringly, this resolves the out-of-bounds issue by only ever picking stencil points that are in bounds
             xorder = 2
             torder = 2
-            tstencil = [t_lastrow - t_now, t_row - t_now, 0]
+            # tstencil = [t_lastrow - t_now, t_row - t_now, 0]
+            tstencil = np.hstack((t_rows[-2:], t_now)) - t_now
             xcoeffs = np.linalg.inv(np.transpose(np.vander(xstencil)))[:,-xorder-1]*math.factorial(xorder) # AI was used to remind of the name of Vandermonde matrices
             tcoeffs = np.linalg.inv(np.transpose(np.vander(tstencil)))[:,-torder-1]*math.factorial(torder)
             # ok and now time for some re-arranging...
             dep_stencil = c**2 * xcoeffs
             dep_stencil[1] -= tcoeffs[-1]
             indep_stencil = tcoeffs[0:-1]
-            K[index, index-1:index+2] = dep_stencil
-            b.append(np.dot(indep_stencil, [lastrow[index], row[index]])) # i mean this could also be a matrix operation but tbh i'll figure that out later
+            K[index, index] = 0 # zero this out, identity was just a placeholder
+            try:
+                K[index, index-1:index+2] = dep_stencil
+            except:
+                breakpoint()
+            # K[index, np.array(indices)] = dep_stencil # output (row) is equal to linear combination of inputs (col)
+            b.append(np.dot(indep_stencil, [np.interp(xpos_current, xposs[-2], rows[-2]), np.interp(xpos_current, xposs[-1], rows[-1])])) # TODO there's gotta be a better way to do this...
         else:
-            b.append(boundary[index])
+            b.append(newboundary[index])
         # places where we defined the boundary can be left as the identity in K
         # but we do need to update b
-    newrow = np.matmul(np.linalg.inv(K), b)
-    return newrow
+    # print(f"{K=}")
+    # print(f"{b=}")
+    # print(f"{xposs=}")
+    # print(f"{newxpos=}")
+    try:
+        newrow = np.matmul(np.linalg.inv(K), b)
+    except:
+        newrow = np.full_like(rows[-1], np.nan)
+        print("oopsie!")
+        breakpoint()
 
+    if plotting:
+        fig, ax = plt.subplots(3)
+        ax[0].plot(xposs[-1], rows[-1], label="0th deriv")
+        if optimize_xpos:
+            ax[0].plot(xposs[-1], first_deriv, label="1st deriv")
+            ax[0].plot(xposs[-1], second_deriv, label="2nd deriv")
+            ax[0].plot(xposs[-1], third_deriv, label="3rd deriv")
+            ax[1].plot(xposs[-1], cdf, label="cdf")
+            ax[1].plot(xposs[-1], cdf_blur, label="cdf blur")
+        ax[0].legend()
+        ax[1].scatter(newxpos, np.full_like(newxpos, 0.6), label="newxpos")
+        ax[1].scatter(xposs[-1], np.full_like(newxpos, 0.4), label="oldxpos")
+        ax[1].hist(newxpos, label="histogram", alpha=0.5, density=True, cumulative=True)
+        ax[1].legend()
+        ax[1].set_ylim(0, 1)
+        ax[2].plot(xposs[-1], rows[-1], label = "t-1")
+        ax[2].plot(newxpos, newrow, label = "t")
+        ax[2].legend()
+        ax[0].set_title("optimized" if optimize_xpos else "not optimized")
+        plt.show()
 
-def sim_implicit(tstep, maxt, L_points, plot_density=False, log=False):
+    return newrow, newxpos
+
+def sim_implicit(tstep, maxt, L_points, plot_density=False, log=False, adaptive=False):
     t_points = int(maxt / tstep + 1)
 
     xpos = np.linspace(0, L, L_points) # list of x positions
@@ -174,71 +249,79 @@ def sim_implicit(tstep, maxt, L_points, plot_density=False, log=False):
     lasttime = -0*tstep
     last2time = -1*tstep
 
-    fullsim = []
-    for time in tpos:
-        newrow = lastrow
-        if time != lasttime:
-            newrow = iterate_implicit(lastrow, last2row, boundary, xpos, time, lasttime, last2time)
-        else:
-            lasttime = -1*tstep # dodgy fix
-        fullsim.append(newrow)
-        last2row = lastrow
-        lastrow = newrow
-        last2time = lasttime
-        lasttime = time
-    fullsim = np.array(fullsim)
-    # print(fullsim)
-    # fig, ax = plt.subplots(2, sharex=True, figsize=(6,8))
-    # ax[1].set_zorder(2)
-    # for index in np.linspace(0, len(tpos)-1, 10):
-    #     ax[1].plot(xpos/0.3048, fullsim[int(index)]/6894.757, label=f"t={tpos[int(index)]}")
-    #     # pass
-    # ax[1].legend()
-    # ax[0].set_title(f"Implicit, dt={tstep}, xpoints={L_points}")
-    # ax[0].set_ylabel("Time, seconds")
-    # ax[1].set_ylabel("Pressure, PSI")
-    # ax[1].set_xlabel("Position, ft")
-    # if plot_density:
-    #     histax.set_ylabel("Grid density")
-    #     histax = ax[1].twinx()
-    #     histax.hist(xpos[:-1]/0.3048, bins=15, label="grid density", alpha=0.5)
-    #     histax.set_zorder(1)
-    # conts = ax[0].contourf(xpos/0.3048, tpos, fullsim/6894.757)
-    # cbar = fig.colorbar(conts, ax=[ax[0], ax[1]])
-    # cbar.ax.set_ylabel("Pressure, PSI")
-    return np.array(fullsim), xpos, tpos, tstep, L_points
+    xposs = [xpos, xpos]
+    t_rows = [last2time, lasttime]
 
-def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=False, name=None):
+    fullsim = [last2row, lastrow]
+    for time in tpos:
+        if time != lasttime:
+            newrow, newxpos = iterate_implicit(fullsim, boundary, xpos, xposs, time, t_rows, optimize_xpos=adaptive, plotting=False)
+            fullsim.append(newrow)
+            xposs.append(newxpos)
+            t_rows.append(time)
+    fullsim = np.array(fullsim)
+    return np.array(fullsim), xposs, t_rows, tstep, L_points
+
+def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=None, name=None):
+    xpos = np.array(xpos)
+    # print(np.shape(xpos))
+    # print(np.shape(tpos))
+    # print(np.shape(fullsim))
+    # print(xpos)
+    # print(tpos)
+    # print(fullsim)
+    # print('\n\n')
+    if np.size(xpos[0]) == 1:
+        xpos, tpos = np.meshgrid(xpos, tpos)
+    else:
+        _, tpos = np.meshgrid(xpos[0], tpos) # xpos already meshgrid-friendly
+    # print(np.shape(xpos))
+    # print(np.shape(tpos))
+    # print(np.shape(fullsim))
     fig, ax = plt.subplots(2, sharex=True, figsize=(6,8))
     ax[1].set_zorder(2)
-    for index in np.linspace(0, len(tpos)-1, 10):
-        ax[1].plot(xpos/0.3048, fullsim[int(index)]/6894.757, label=f"t={tpos[int(index)]:.5f}")
+    for index in np.linspace(0, len(tpos)-1-1e-6, 10):
+        ax[1].plot(xpos[int(np.floor(index))]/0.3048, fullsim[int(np.floor(index))]/6894.757, label=f"t={tpos[int(np.floor(index)), 0]:.5f}")
         # pass
     ax[1].legend()
     ax[0].set_title(f"{imporexp}, dt={tstep}, xpoints={L_points}")
     ax[0].set_ylabel("Time, seconds")
     ax[1].set_ylabel("Pressure, PSI")
     ax[1].set_xlabel("Position, ft")
-    if plot_density:
-        histax = ax[1].twinx()
-        histax.set_zorder(1)
-        histax.set_ylabel("Grid density")
-        histax.hist(xpos[:-1]/0.3048, bins=15, label="grid density", alpha=0.5)
-        histax.set_zorder(1)
     conts = ax[0].contourf(xpos/0.3048, tpos, fullsim/6894.757)
     cbar = fig.colorbar(conts, ax=[ax[0], ax[1]])
     cbar.ax.set_ylabel("Pressure, PSI")
+    if plot_density != None:
+        if plot_density == "single":
+            histax = ax[1].twinx()
+            histax.set_ylabel("Grid density")
+            histax.hist(xpos[:-1]/0.3048, bins=15, label="grid density", alpha=0.5)
+            histax.set_zorder(1)
+        elif plot_density == "overlay":
+            ax[0].scatter(xpos/0.3048, tpos, c="red", alpha=0.5, s=1)
     if name != None:
-        fig.savefig("plots/" + name)
+        fig.savefig("plots/" + name + ".png")
         plt.close(fig)
     else:
         plt.show()
 
+## Some adaptive meshing tests and demos:
+# L_points = 11
+# base = 1.1
+# offset = 2
+# xpos = np.logspace(math.log(offset)/math.log(base), math.log(L+offset)/math.log(base), L_points, base=base) - offset
+# init = 10 * np.exp(-(xpos - 10)**2 / 50)
+# boundary = np.full_like(xpos, np.nan)
+# boundary[0] = init[0]
+# boundary[-1] = init[-1]
+# row_opt, xpos_opt = iterate_implicit([init, init], boundary, xpos, [xpos, xpos], 0.002, [0.00, 0.001], plotting=True, optimize_xpos=True)
+# row_nopt, xpos_nopt = iterate_implicit([init, init], boundary, xpos, [xpos, xpos], 0.002, [0.00, 0.001], plotting=True, optimize_xpos=False)
+# fig, ax = plt.subplots(1)
+# ax.plot(xpos_opt, row_opt, label="opt")
+# ax.plot(xpos_nopt, row_nopt, label="nopt")
+# ax.legend()
+# plt.show()
 
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit")
-
-exit()
 
 # compare explicit and implicit solution
 fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, 51)
@@ -249,6 +332,7 @@ fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
 makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="1_1_implicit_51")
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 101)
 makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="1_1_implicit_101")
+print("finished 1: explicit v implicit")
 
 # compare time steps
 fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.0001, 0.05, 51)
@@ -259,6 +343,7 @@ fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.0001, 0.05, 51)
 makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="2_1_implicit_-4")
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.01, 0.05, 51)
 makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="2_1_implicit_-2")
+print("finished 2: tstep variation")
 
 # compare runtimes
 print("Starting timing tests")
@@ -277,9 +362,16 @@ time_exec(sim_implicit, 0.01, "Implicit method")
 
 # showcase nonuniform grid density
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density=True,name="4_1_implicit_linear")
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="single",name="4_1_implicit_linear")
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, log=True)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density=True, name="4_1_implicit_log")
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="single", name="4_1_implicit_log")
+
+# showcase adaptive meshing
+fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=False, log=True)
+makeplot(fullsim, xpos, tpos, tstep, L_points, "nonadaptive", plot_density="overlay", name="4_2_implicit_nonadaptive")
+fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=True, log=True)
+makeplot(fullsim, xpos, tpos, tstep, L_points, "adaptive", plot_density="overlay", name="4_2_implicit_adaptive")
+# tbh it does not work very well, but it was still cool to play around with!
 
 plt.show()
 
