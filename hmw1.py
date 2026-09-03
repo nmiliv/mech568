@@ -362,9 +362,9 @@ time_exec(sim_implicit, 0.01, "Implicit method")
 
 # showcase nonuniform grid density
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="single",name="4_1_implicit_linear")
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="overlay",name="4_1_implicit_linear")
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, log=True)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="single", name="4_1_implicit_log")
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="overlay", name="4_1_implicit_log")
 
 # showcase adaptive meshing
 fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=False, log=True)
