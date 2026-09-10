@@ -323,62 +323,70 @@ def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=None, 
 # plt.show()
 
 
-# compare explicit and implicit solution
-fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_1_explicit_51")
-fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, 101)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_1_explicit_101")
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="1_1_implicit_51")
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 101)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="1_1_implicit_101")
-print("finished 1: explicit v implicit")
+fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, int(100/0.001/1125+1))
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_1_stable")
+fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, int(100/0.001/1125+2))
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_2_marginal")
+fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, int(100/0.001/1125+3))
+makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_3_unstable")
 
-# compare time steps
-fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.0001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="2_1_explicit_-4")
-fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.01, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="2_1_explicit_-2")
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.0001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="2_1_implicit_-4")
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.01, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="2_1_implicit_-2")
-print("finished 2: tstep variation")
-
-# compare runtimes
-print("Starting timing tests")
-def time_exec(f, step, name):
-    num = 100
-    start = time.time()
-    for i in range(num): f(step, 0.05, 51)
-    end = time.time()
-    print(f"{name} @ dt={step} took {(end-start)/num*1e+3:.3f} ms (average) to execute.")
-time_exec(sim_explicit, 0.0001, "Explicit method")
-time_exec(sim_explicit, 0.001, "Explicit method")
-time_exec(sim_explicit, 0.01, "Explicit method")
-time_exec(sim_implicit, 0.0001, "Implicit method")
-time_exec(sim_implicit, 0.001, "Implicit method")
-time_exec(sim_implicit, 0.01, "Implicit method")
-
-# showcase nonuniform grid density
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="overlay",name="4_1_implicit_linear")
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, log=True)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="overlay", name="4_1_implicit_log")
-
-# showcase adaptive meshing
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=False, log=True)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "nonadaptive", plot_density="overlay", name="4_2_implicit_nonadaptive")
-fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=True, log=True)
-makeplot(fullsim, xpos, tpos, tstep, L_points, "adaptive", plot_density="overlay", name="4_2_implicit_adaptive")
-# tbh it does not work very well, but it was still cool to play around with!
-
-plt.show()
-
-
-# you might be thinking "damn these comments look ratchet" so:
-# 1. I am sick, let me have some fun and
-# 2. I write less ratchet comments when I'm paid for my code
-# (also I'm bored of writing my paid code comments)
-# (also yes I document my code, it's just part of my though process when I'm
-# writing. I have the pre-LLM code to prove it.)
+#
+# # compare explicit and implicit solution
+# fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_1_explicit_51")
+# fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.001, 0.05, 101)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="1_1_explicit_101")
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="1_1_implicit_51")
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 101)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="1_1_implicit_101")
+# print("finished 1: explicit v implicit")
+#
+# # compare time steps
+# fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.0001, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="2_1_explicit_-4")
+# fullsim, xpos, tpos, tstep, L_points = sim_explicit(0.01, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Explicit", name="2_1_explicit_-2")
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.0001, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="2_1_implicit_-4")
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.01, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", name="2_1_implicit_-2")
+# print("finished 2: tstep variation")
+#
+# # compare runtimes
+# print("Starting timing tests")
+# def time_exec(f, step, name):
+#     num = 100
+#     start = time.time()
+#     for i in range(num): f(step, 0.05, 51)
+#     end = time.time()
+#     print(f"{name} @ dt={step} took {(end-start)/num*1e+3:.3f} ms (average) to execute.")
+# time_exec(sim_explicit, 0.0001, "Explicit method")
+# time_exec(sim_explicit, 0.001, "Explicit method")
+# time_exec(sim_explicit, 0.01, "Explicit method")
+# time_exec(sim_implicit, 0.0001, "Implicit method")
+# time_exec(sim_implicit, 0.001, "Implicit method")
+# time_exec(sim_implicit, 0.01, "Implicit method")
+#
+# # showcase nonuniform grid density
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="overlay",name="4_1_implicit_linear")
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, log=True)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "Implicit", plot_density="overlay", name="4_1_implicit_log")
+#
+# # showcase adaptive meshing
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=False, log=True)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "nonadaptive", plot_density="overlay", name="4_2_implicit_nonadaptive")
+# fullsim, xpos, tpos, tstep, L_points = sim_implicit(0.001, 0.05, 51, adaptive=True, log=True)
+# makeplot(fullsim, xpos, tpos, tstep, L_points, "adaptive", plot_density="overlay", name="4_2_implicit_adaptive")
+# # tbh it does not work very well, but it was still cool to play around with!
+#
+# plt.show()
+#
+#
+# # you might be thinking "damn these comments look ratchet" so:
+# # 1. I am sick, let me have some fun and
+# # 2. I write less ratchet comments when I'm paid for my code
+# # (also I'm bored of writing my paid code comments)
+# # (also yes I document my code, it's just part of my though process when I'm
+# # writing. I have the pre-LLM code to prove it.)
