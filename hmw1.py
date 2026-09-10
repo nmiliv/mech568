@@ -283,7 +283,7 @@ def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=None, 
     for index in np.linspace(0, len(tpos)-1-1e-6, 10):
         ax[1].plot(xpos[int(np.floor(index))]/0.3048, fullsim[int(np.floor(index))]/6894.757, label=f"t={tpos[int(np.floor(index)), 0]:.5f}")
         # pass
-    ax[1].legend()
+    ax[1].legend(loc="lower right")
     ax[0].set_title(f"{imporexp}, dt={tstep}, xpoints={L_points}")
     ax[0].set_ylabel("Time, seconds")
     ax[1].set_ylabel("Pressure, PSI")
