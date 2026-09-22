@@ -64,41 +64,35 @@ values, vectors = np.linalg.eig(b_matrix)
 # print(vectors)
 
 def stability_RK(eig, order):
-    running_sum = 0
-    for index in np.arange(order+1):
-        running_sum += np.power(eig, index) / math.factorial(index)
-    print(running_sum)
-    return np.abs(running_sum)
+    return np.abs(np.sum(np.power(eig, np.arange(order+1)) / spp.factorial(np.arange(order+1))))
+
+lower_limit = 1e-20
 
 def stability_limit_RK(eigs, order):
     limits = []
     for eig in eigs:
         if np.abs(eig) <= 1e-16: continue # assume that this is probably zero
-        limit = spo.brentq(lambda x : stability_RK(eig * x, order) - 1, 1e-10, 1e+2)
+        most_stable = spo.minimize_scalar(lambda x : stability_RK(eig * x, order), bounds=(lower_limit, 1e+2), method='bounded')
+        if stability_RK(eig * most_stable.x, order) > 1:
+            limits.append(np.nan)
+            continue
+        limit_lower = spo.brentq(lambda x : stability_RK(eig * x, order) - 1, lower_limit, most_stable.x)
+        limit_upper = spo.brentq(lambda x : stability_RK(eig * x, order) - 1, most_stable.x, 1e+2)
+        limit = limit_upper
         limits.append(limit)
     print(limits)
     return np.max(limits)
 
-# print(stability_limit_RK(values, 1))
-# print(stability_limit_RK(values, 2))
-# print(stability_limit_RK(values, 4))
+print(stability_limit_RK(values, 1))
+print(stability_limit_RK(values, 2))
+print(stability_limit_RK(values, 4))
 
-stabspace = np.logspace(-10, 2)
+stabspace = np.logspace(-10, 2, 200)
 stability = []
 for point in stabspace:
-    stability.append(stability_RK(values[0] * point, 1))
+    stability.append(stability_RK(values[0] * point, 8))
 fig, ax = plt.subplots(1)
-ax.semilogx(stabspace, stability)
-breakpoint()
+ax.loglog(stabspace, stability)
+ax.set_ylim([0.5, 2])
+# breakpoint()
 plt.show()
-
-
-
-
-
-
-
-
-
-
-
