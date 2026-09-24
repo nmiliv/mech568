@@ -16,8 +16,6 @@ def template_to_stencil(template, order):
 def stability_RK(eig, order):
     return np.abs(np.sum(np.power(eig, np.arange(order+1)) / spp.factorial(np.arange(order+1))))
 
-lower_limit = 1e-20
-
 def stability_limit_RK(eigs, order):
     eig = np.max(eigs)
     if np.abs(eig) <= 1e-16: return np.nan # assume that this is probably zero
@@ -27,7 +25,6 @@ def stability_limit_RK(eigs, order):
     limit_lower = spo.brentq(lambda x : stability_RK(eig * x, order) - (1 - 1e-6), lower_limit, most_stable.x) # 1e-6 otherwise the flat (very slightly unstable) portion "looks" stable to the solver
     limit_upper = spo.brentq(lambda x : stability_RK(eig * x, order) - 1, most_stable.x, 1e+2)
     return limit_lower, most_stable.x, limit_upper
-
 
 def build_b(xspace, bounds, stencil_size):
     xpoints = len(xspace)
@@ -57,64 +54,43 @@ def build_b(xspace, bounds, stencil_size):
     g_vector = np.block([np.zeros_like(f_vector), f_vector])
     return b_sparse, g_vector
 
-xspace = np.linspace(0, L, 7)
+def step_rk4(B, y, dt, g): # asked AI to check whether this implementation was correct
+    k1 = B @ y + g
+    k2 = B @ (y + dt/2 * k1) + g
+    k3 = B @ (y + dt/2 * k2) + g
+    k4 = B @ (y + dt * k3) + g
+    return y + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+
+xpoints = 101
+xspace = np.linspace(0, L, xpoints)
 bounds = np.full_like(xspace, np.nan)
 bounds[0] = 0
 bounds[-1] = p_init
 b_sparse, g_vector = build_b(xspace, bounds, 3)
-print(b_sparse)
-print(g_vector)
 values = sps.linalg.eigs(b_sparse, which="LM", k=2, return_eigenvectors=False)
+_, dt, _ = stability_limit_RK(values, 4)
+time = 0
+init = np.full(xpoints, p_init)
+init[0] = 0
+results = [init]
+row = init[1:-1]
+row = np.block([row, np.zeros_like(row)])
+# row = np.block([row, ])
+times = [0]
+# print(results)
+# print(row)
 
-print("The minimum, most stable, and maximum stable timestep for RK1 in seconds is (nan for always unstable)")
-print(stability_limit_RK(values, 1))
-print("The minimum, most stable, and maximum stable timestep for RK2 in seconds is (nan for always unstable)")
-print(stability_limit_RK(values, 2))
-print("The minimum, most stable, and maximum stable timestep for RK4 in seconds is (nan for always unstable)")
-print(stability_limit_RK(values, 4))
+print(row)
+print(b_sparse @ row)
 
-xpoints_space = np.logspace(int(np.log10(L/1e+1/0.3048)), int(np.log10(L/1e-4/0.3048)), num=50).astype(np.int_) + 1
-max_dts = []
-for xpoints in xpoints_space:
-    if len(max_dts) > 0 and np.isnan(max_dts[-1]):
-        max_dts.append(np.nan)
-        continue
-    xspace = np.linspace(0, L, xpoints)
-    bounds = np.full_like(xspace, np.nan)
-    bounds[0] = 0
-    bounds[-1] = p_init
-    b_sparse, _ = build_b(xspace, bounds, 3)
-    print(f'trying npoints = {xpoints}')
-    try:
-        values = sps.linalg.eigs(b_sparse, which="LM", k=2, return_eigenvectors=False, maxiter=100)
-    except:
-        max_dts.append(np.nan)
-        print(f"could not converge npoints = {xpoints}, aborting larger matrices")
-    else:
-        max_dts.append(stability_limit_RK(values, 4)[2])
+while time < 0.05:
+    row = step_rk4(b_sparse, row, dt, g_vector)
+    trunc_row = bounds.copy()
+    trunc_row[np.where(np.isnan(trunc_row))] = row[:np.sum(np.isnan(trunc_row))]
+    results.append(trunc_row)
+    time += dt
+    times.append(time)
 
-max_dts = np.asarray(max_dts)
-
-# print(max_dts)
-# print(np.where(np.isfinite(max_dts)))
-# print(xpoints_space[np.where(np.isfinite(max_dts))])
-m, b = np.polyfit(np.log(xpoints_space[np.where(np.isfinite(max_dts))]), np.log(max_dts[np.where(np.isfinite(max_dts))]), 1)
-# TODO fancier printing
-print(m)
-print(b)
-
-fig, ax = plt.subplots(2)
-ax[0].loglog(xpoints_space, max_dts, label="analytical stability")
-ax[0].loglog(xpoints_space, math.exp(b) * np.power(xpoints_space, m), '--', label="Curve fit, extrapolated")
-ax[0].legend()
-ax[0].set_ylabel("Max timestep")
-ax[0].set_xlabel("Number xpoints")
-ax[1].semilogx(xpoints_space, max_dts - math.exp(b) * np.power(xpoints_space, m))
-ax[1].set_ylabel("Curve fit error")
-ax[1].set_xlabel("Number xpoints")
-print(xpoints_space)
-print(max_dts)
-plt.show()
 
 def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=None, name=None):
     xpos = np.array(xpos)
@@ -126,7 +102,7 @@ def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=None, 
     ax[1].set_zorder(2)
     for index in np.linspace(0, len(tpos)-1-1e-6, 10):
         ax[1].plot(xpos[int(np.floor(index))]/0.3048, fullsim[int(np.floor(index))]/6894.757, label=f"t={tpos[int(np.floor(index)), 0]:.5f}")
-    ax[1].legend(loc="lower right")
+    # ax[1].legend(loc="lower right")
     ax[1].legend()
     ax[0].set_title(f"{imporexp}, dt={tstep}, xpoints={L_points}")
     ax[0].set_ylabel("Time, seconds")
@@ -149,54 +125,4 @@ def makeplot(fullsim, xpos, tpos, tstep, L_points, imporexp, plot_density=None, 
     else:
         plt.show()
 
-def step_rk4(B, y, dt, g): # asked AI to check whether this implementation was correct
-    k1 = B @ y + g
-    k2 = B @ (y + dt/2 * k1) + g
-    k3 = B @ (y + dt/2 * k2) + g
-    k4 = B @ (y + dt * k3) + g
-    return y + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
-
-# honestly the AI just gave up on implementing 6th and 8th order RK methods lol
-# it did give me a general solution for known butcher table, but wouldn't give me
-# butcher tables.
-
-def step_rk3(B, y, dt, g):
-    k1 = B @ y + g
-    k2 = B @ (y + dt/2 * k1) + g
-    k3 = B @ (y + dt * (-k1 + k2)) + g
-    return y + dt/6 * (k1 + 4*k2 + k3)
-
-def step_rki(B, y, dt, g):
-    return sps.linalg.spsolve((sps.eye_array(len(y)) - B*dt), (y + dt*g))
-
-def simulate(xpoints, stencil_size, stepper, name, order=4):
-    xspace = np.linspace(0, L, xpoints)
-    bounds = np.full_like(xspace, np.nan)
-    bounds[0] = 0
-    bounds[-1] = p_init
-    b_sparse, g_vector = build_b(xspace, bounds, stencil_size)
-    values = sps.linalg.eigs(b_sparse, which="LM", k=2, return_eigenvectors=False)
-    _, dt, _ = stability_limit_RK(values, order)
-    time = 0
-    init = np.full(xpoints, p_init)
-    init[0] = 0
-    results = [init]
-    row = init[1:-1]
-    row = np.block([row, np.zeros_like(row)]) # there was actually a bug here and I even had the AI try to solve it but it didn't even think to look here. Oh well. It was nice to have a rubber ducky to talk to at least (this assumes you know about the rubber ducky method in programming).
-    times = [0]
-    # breakpoint()
-
-    while time < 0.05:
-        row = stepper(b_sparse, row, dt, g_vector)
-        trunc_row = bounds.copy()
-        trunc_row[np.where(np.isnan(trunc_row))] = row[:np.sum(np.isnan(trunc_row))]
-        results.append(trunc_row)
-        time += dt
-        times.append(time)
-
-    makeplot(np.array(results), xspace, times, dt, xpoints, name)
-simulate(101, 3, step_rk4, "RK4")
-simulate(101, 3, step_rki, "RKi")
-simulate(101, 5, step_rk4, "RK4, stencil 5")
-simulate(101, 7, step_rk4, "RK4, stencil 7")
-simulate(101, 3, step_rk3, "RK3", order=3)
+makeplot(np.array(results), xspace, times, dt, xpoints, "RK4")
