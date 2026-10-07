@@ -6,29 +6,156 @@ import scipy.sparse as sps
 
 w = 0.05
 h = 0.25
-bottom_spaces = 3 + 1
-edge_spacing = 0.05/bottom_spaces
-x_edges = np.linspace(0, w, int(w/spacing))
-y_edges = np.linspace(0, h, int(h/spacing))
-x_centers = np.cumsum(np.diff(x_edges)) + edge_spacing/2
-y_centers = np.cumsum(np.diff(y_edges)) + edge_spacing/2
-xspace_edges, yspace_edges = np.meshgrid(xpoints, ypoints)
-xspace_cent, yspace_cent = np.meshgrid(x_centers, y_centers)
-matrix_T = np.zeros_like(xspace_cent)
+bottom_spaces = 3
+edge_spacing = w/(bottom_spaces)
+x_centers = np.linspace(0, w, int(w/edge_spacing) + 1)[:-1] + edge_spacing/2
+y_centers = np.linspace(0, h, int(h/edge_spacing) + 1)[:-1] + edge_spacing/2
+xspace, yspace = np.meshgrid(x_centers, y_centers)
+matrix_T = np.zeros_like(xspace)
 v0 = 0.03
 v0 = 0
 k = 0.606
-k_matrix = np.full_like(xspace_edges, k)
-k_matrix[:,  0] = 25
-k_matrix[:, -1] = 25
-k_matrix[0,  :] = 50
-k_matrix[-1, :] = 2
+k_rht = 25
+k_top = 50
+k_lft = 25
+k_bot = 2
+# k_matrix = np.full_like(xspace, k)
+# k_matrix[:,  0] = 25
+# k_matrix[:, -1] = 25
+# k_matrix[0,  :] = 50
+# k_matrix[-1, :] = 2
+
+print(xspace)
+print(yspace)
 
 rho = 1000
 cp = 4186
-vx =  v0 * np.sin(np.pi * xspace_edges / w) * np.cos(np.pi * yspace_edges / h)
-vy = -v0 * np.cos(np.pi * xspace_edges / w) * np.sin(np.pi * yspace_edges / h)
+def get_vx_vy(x, y):
+    vx =  v0 * np.sin(np.pi * x / w) * np.cos(np.pi * y / h)
+    vy = -v0 * np.cos(np.pi * x / w) * np.sin(np.pi * y / h)
+    return vx, vy
+vx, vy = get_vx_vy(xspace, yspace)
 T_amb = 25
+
+def get_connectivity(matrix):
+    rht = sps.eye_array(matrix.size, k=1).tolil()
+    rht[matrix.shape[1]-1:-1:matrix.shape[1],:] = 0
+    top = sps.eye_array(matrix.size, k=-matrix.shape[1])
+    lft = sps.eye_array(matrix.size, k=-1).tolil()
+    lft[0:-1:matrix.shape[1],:] = 0
+    bot = sps.eye_array(matrix.size, k=+matrix.shape[1])
+    return rht, top, lft, bot
+
+rht, top, lft, bot = get_connectivity(matrix_T)
+
+# test_flat = np.arange(12)
+# test = test_flat.reshape((3, 4))
+# rht, top, lft, bot = get_connectivity(test)
+# print(test)
+# print(rht @ test_flat)
+# print(top @ test_flat)
+# print(lft @ test_flat)
+# print(bot @ test_flat)
+# print(rht.toarray())
+# print(top.toarray())
+# print(lft.toarray())
+# print(bot.toarray())
+
+vector_T = matrix_T.flatten()
+vector_vx = vx.flatten()
+vector_vy = vy.flatten()
+
+
+# print(rht * edge_spacing/edge_spacing + top * edge_spacing/edge_spacing - lft * edge_spacing/edge_spacing - bot * edge_spacing/edge_spacing)
+
+matrix_A = (rho * cp  * (np.eye(matrix_T.size) @ (vector_vx*edge_spacing/2 + vector_vy*edge_spacing/2 - vector_vx*edge_spacing/2 - vector_vy*edge_spacing/2) \
+    + rht @ (vector_vx*edge_spacing/2) + top @ (vector_vy*edge_spacing/2) - lft @ (vector_vx*edge_spacing/2) - bot @ (vector_vy*edge_spacing/2)) \
+        + k * (rht * edge_spacing/edge_spacing + top * edge_spacing/edge_spacing - lft * edge_spacing/edge_spacing - bot * edge_spacing/edge_spacing)) / rho / cp / edge_spacing / edge_spacing
+    # + k * ("""np.eye(matrix_T.size) @ (-edge_spacing/edge_spacing - edge_spacing/edge_spacing + edge_spacing/edge_spacing + edge_spacing/edge_spacing)""" + rht * edge_spacing/edge_spacing + top * edge_spacing/edge_spacing - lft * edge_spacing/edge_spacing - bot * edge_spacing/edge_spacing)) / rho / cp / edge_spacing / edge_spacing
+
+vector_F = np.zeros_like(vector_T)
+vector_F[matrix_T.shape[1]-1::matrix_T.shape[1]]    += (rho * cp * vx[:,-1]*edge_spacing/2 + k_rht * edge_spacing/edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[-matrix_T.shape[1]:]                       += (rho * cp * vx[-1,:]*edge_spacing/2 + k_top * edge_spacing/edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[0:-1:matrix_T.shape[1]]                    += (rho * cp * vx[:, 0]*edge_spacing/2 + k_lft * edge_spacing/edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[0:matrix_T.shape[1]]                       += (rho * cp * vy[0, :]*edge_spacing/2 + k_bot * edge_spacing/edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+
+
+# print(matrix_A)
+# print(vector_F)
+
+# print(matrix_T)
+# print(np.reshape(matrix_A @ vector_T + vector_F, matrix_T.shape))
+
+def step_RK1(vector, A, F, t_step):
+    dTdt = A @ vector + F
+    return vector + dTdt * t_step
+
+def step_simple(matrix, t_step, v_x, v_y):
+    first_term = np.zeros_like(matrix)
+    second_term = np.zeros_like(matrix)
+    for yin in np.arange(0, matrix.shape[0]):
+        for xin in np.arange(0, matrix.shape[1]-1):
+            first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin, xin+1]*matrix[yin, xin+1])/2 * edge_spacing
+            second_term[yin, xin] += k * (matrix[yin, xin+1] - matrix[yin, xin]) / edge_spacing * edge_spacing
+    for yin in np.arange(0, matrix.shape[0]):
+        xin = matrix.shape[1]-1
+        first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin, xin]*T_amb)/2 * edge_spacing
+        second_term[yin, xin] += k_rht * (T_amb - matrix[yin, xin]) / edge_spacing * edge_spacing
+
+    for yin in np.arange(0, matrix.shape[0]-1):
+        for xin in np.arange(0, matrix.shape[1]):
+            first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin+1, xin]*matrix[yin+1, xin])/2 * -edge_spacing
+            second_term[yin, xin] += k * (matrix[yin+1, xin] - matrix[yin, xin]) / edge_spacing * -edge_spacing
+    for xin in np.arange(0, matrix.shape[1]):
+        yin = matrix.shape[0]-1
+        first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin, xin]*T_amb)/2 * -edge_spacing
+        second_term[yin, xin] += k_top * (T_amb - matrix[yin, xin]) / edge_spacing * -edge_spacing
+
+    for yin in np.arange(0, matrix.shape[0]):
+        for xin in np.arange(1, matrix.shape[1]):
+            first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin, xin-1]*matrix[yin, xin-1])/2 * -edge_spacing
+            second_term[yin, xin] += k * (matrix[yin, xin-1] - matrix[yin, xin]) / -edge_spacing * -edge_spacing
+    for yin in np.arange(0, matrix.shape[0]):
+        xin = 0
+        first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin, xin]*T_amb)/2 * -edge_spacing
+        second_term[yin, xin] += k_lft * (T_amb - matrix[yin, xin]) / -edge_spacing * -edge_spacing
+
+    for yin in np.arange(1, matrix.shape[0]):
+        for xin in np.arange(0, matrix.shape[1]):
+            first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin-1, xin]*matrix[yin-1, xin])/2 * edge_spacing
+            second_term[yin, xin] += k * (matrix[yin-1, xin] - matrix[yin, xin]) / -edge_spacing * edge_spacing
+    for xin in np.arange(0, matrix.shape[1]):
+        yin = 0
+        first_term += rho * cp * (v_x[yin, xin]*matrix[yin, xin] + v_x[yin, xin]*T_amb)/2 * edge_spacing
+        second_term[yin, xin] += k_bot * (T_amb - matrix[yin, xin]) / -edge_spacing * edge_spacing
+    dTdt = first_term + second_term / rho / cp / edge_spacing / edge_spacing
+    return matrix + dTdt * t_step
+
+plots = 3
+history = [matrix_T.copy()]
+t_step = 0.1
+for i in np.arange(0, plots*5-1):
+    vector_T = step_RK1(vector_T, matrix_A, vector_F, t_step)
+    history.append(np.reshape(vector_T, matrix_T.shape))
+print(history)
+
+plots = 3
+history_2 = [matrix_T.copy()]
+t_step = 0.1
+for i in np.arange(0, plots*5-1):
+    matrix_T = step_simple(matrix_T, t_step, vx, vy)
+    history_2.append(matrix_T)
+print(history_2)
+
+fig, ax = plt.subplots(1, plots)
+for index in np.arange(plots):
+    ax[index].pcolor(xspace, yspace, history[index])
+
+fig, ax = plt.subplots(1, plots)
+for index in np.arange(plots):
+    ax[index].pcolor(xspace, yspace, history_2[index])
+
+plt.show()
 
 def template_to_stencil(template, order):
     return np.linalg.inv(np.transpose(np.vander(template)))[:,-order-1]*math.factorial(order)
@@ -47,18 +174,6 @@ def stability_limit_RK(eigs, order):
     limit_lower = spo.brentq(lambda x : stability_RK(eig * x, order) - (1 - 1e-6), lower_limit, most_stable.x) # 1e-6 otherwise the flat (very slightly unstable) portion "looks" stable to the solver
     limit_upper = spo.brentq(lambda x : stability_RK(eig * x, order) - 1, most_stable.x, most_stable.x + 1e+2)
     return limit_lower, most_stable.x, limit_upper
-
-# ugh ok so take two
-def get_T_edges(matrix): # TODO wait actually this should return x edges and y edges seperately. same for velocities.
-    # and then later we should be able to turn that back into invertible matrix ops
-    x_aves = (np.hstack([np.full((matrix.shape[0], 1), T_amb), matrix]) + np.hstack([matrix, np.full((matrix.shape[0], 1), T_amb)])) / 2
-    full_aves = (np.vstack([np.full((1, matrix.shape[1]), T_amb), matrix]) + np.vstack([matrix, np.full((1, matrix.shape[1]), T_amb)])) / 2
-    return full_aves
-
-# ok and we can skip v aves bc now we have the full thing
-
-def get_pdr_edges(matrix, x_center_spacing, y_center_spacing):
-    pdr_x = np.diff(np.hstack([np.full((matrix.shape[0], 1), T_amb), matrix, np.full((matrix.shape[0], 1), T_amb)])) / np.diff(x_cetner_spacing)
 
 
 
@@ -118,39 +233,7 @@ def get_pdrs(matrix, space): # TODO ok got it: use the xpos and ypos matrices to
     print(bot_pdr_T)
     return lft_pdr_T, top_pdr_T, rht_pdr_T, bot_pdr_T
 
-def get_rhs(matrix, v_x, v_y):
-    lft_ave_T, top_ave_T, rht_ave_T, bot_ave_T = get_T_aves(matrix)
-    lft_ave_vx, top_ave_vy, rht_ave_vx, bot_ave_vy = get_v_aves(v_x, v_y)
-    lft_pdr_T, top_pdr_T, rht_pdr_T, bot_pdr_T = get_pdrs(matrix, spacing)
-    print("-------------term 1------------")
-    print(spacing*(rht_ave_T*rht_ave_vx - lft_ave_T*lft_ave_vx - top_ave_T*top_ave_vy + bot_ave_T*bot_ave_vy))
-    print("-------------term 2------------")
-    print(spacing*(k_rht*rht_pdr_T - k_lft*lft_pdr_T - k_top*top_pdr_T + k_bot*bot_pdr_T) / rho / cp)
-    print("-------------term 2 rht------------")
-    print(spacing*(k_rht*rht_pdr_T) / rho / cp)
-    print("-------------term 2 lft------------")
-    print(spacing*(- k_lft*lft_pdr_T) / rho / cp)
-    print("-------------term 2 top ------------")
-    print(spacing*(- k_top*top_pdr_T) / rho / cp)
-    print("-------------term 2 bot------------")
-    print(spacing*(k_bot*bot_pdr_T) / rho / cp)
-    right_hand_side = spacing*(lft_ave_T*lft_ave_vx - rht_ave_T*rht_ave_vx - top_ave_T*top_ave_vy + bot_ave_T*bot_ave_vy) + spacing*(k_lft*lft_pdr_T - k_rht*rht_pdr_T - k_top*top_pdr_T + k_bot*bot_pdr_T) / rho / cp
-    print("-------------rhs-----------------")
-    print(right_hand_side)
-    return right_hand_side
 
-def step_RK1(matrix, v_x, v_y, t_step):
-    next_step = get_rhs(matrix, v_x, v_y) / spacing ** 2 * t_step + matrix
-    print("-------------next step-----------------")
-    print(next_step)
-    return next_step
-
-plots = 3
-history = [matrix_T.copy()]
-t_step = 0.1
-for i in np.arange(0, plots*1-1):
-    matrix_T = step_RK1(matrix_T, vx, vy, t_step)
-    history.append(matrix_T)
 
 
 
@@ -174,16 +257,21 @@ for i in np.arange(0, plots*1-1):
 # print(rht_ave_T)
 # print(top_ave_T)
 # print(bot_ave_T)
+#
+#
+# fig, ax = plt.subplots(1, 2)
+# ax[0].pcolor(xspace, yspace, vx)
+# ax[1].pcolor(xspace, yspace, vy)
 
 
-fig, ax = plt.subplots(1, 2)
-ax[0].pcolor(xspace, yspace, vx)
-ax[1].pcolor(xspace, yspace, vy)
 
-fig, ax = plt.subplots(1, plots)
-for index in np.arange(plots):
-    ax[index].pcolor(xspace, yspace, history[index])
-print("-------------history-----------------")
-print(history)
-plt.show()
-breakpoint()
+
+
+
+
+
+
+
+
+
+
