@@ -7,8 +7,8 @@ import scipy.optimize as spo
 import scipy.special as spp
 
 w = 0.05
-h = 0.25
-bottom_spaces = 10
+h = 0.05
+bottom_spaces = 4
 edge_spacing = w/(bottom_spaces)
 x_centers = np.linspace(0, w, int(w/edge_spacing) + 1)[:-1] + edge_spacing/2
 y_centers = np.linspace(0, h, int(h/edge_spacing) + 1)[:-1] + edge_spacing/2
@@ -76,10 +76,12 @@ vector_vx = vx.flatten()
 vector_vy = vy.flatten()
 
 
+
+
 # print(rht * edge_spacing/edge_spacing + top * edge_spacing/edge_spacing - lft * edge_spacing/edge_spacing - bot * edge_spacing/edge_spacing)
 # TODO it mostly seems to work except for the velocities thing. probably an issue because i didn't actually read the equation, try reading the equations.
-matrix_A = (rho * cp  * (sps.diags_array(vector_vx*edge_spacing/2 + vector_vy*edge_spacing/2 + vector_vx*edge_spacing/2 + vector_vy*edge_spacing/2) \
-    + rht @ (sps.diags_array(vector_vx)*edge_spacing/2) + top @ (sps.diags_array(vector_vy)*edge_spacing/2) + lft @ (sps.diags_array(vector_vx)*edge_spacing/2) + bot @ (sps.diags_array(vector_vy)*edge_spacing/2)) \
+matrix_A = (rho * cp  * (sps.diags_array(get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten() + get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten() - get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten() - get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten())*edge_spacing/2 \
+    + rht @ (sps.diags_array(get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten())*edge_spacing/2) + top @ (sps.diags_array(get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten())*edge_spacing/2) - lft @ (sps.diags_array(get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten())*edge_spacing/2) - bot @ (sps.diags_array(get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten())*edge_spacing/2)) \
     + ((k*rht*edge_spacing/edge_spacing - sps.diags_array(k_mat_rht.flatten())*edge_spacing/edge_spacing) \
     + (k*top*edge_spacing/edge_spacing - sps.diags_array(k_mat_top.flatten())*edge_spacing/edge_spacing) \
     + (k*lft*edge_spacing/edge_spacing - sps.diags_array(k_mat_lft.flatten())*edge_spacing/edge_spacing) \
@@ -92,7 +94,7 @@ vector_F[-matrix_T.shape[1]:]                       += (rho * cp * vx[-1,:]*edge
 vector_F[0:-1:matrix_T.shape[1]]                    += (rho * cp * vx[:, 0]*edge_spacing/2 + k_lft * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
 vector_F[0:matrix_T.shape[1]]                       += (rho * cp * vy[0, :]*edge_spacing/2 + k_bot * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
 
-
+breakpoint()
 # print(matrix_A)
 # print(vector_F)
 
@@ -156,7 +158,7 @@ def step_simple(matrix, t_step, v_x, v_y):
 plots = 3
 total = plots*50 *4*60
 history = [matrix_T.copy()]
-t_step = 0.1
+t_step = 0.01
 for i in np.arange(total):
     vector_T = step_RK1(vector_T, matrix_A, vector_F, t_step)
     history.append(np.reshape(vector_T, matrix_T.shape))
