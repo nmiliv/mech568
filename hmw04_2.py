@@ -80,8 +80,11 @@ vector_vy = vy.flatten()
 
 # print(rht * edge_spacing/edge_spacing + top * edge_spacing/edge_spacing - lft * edge_spacing/edge_spacing - bot * edge_spacing/edge_spacing)
 # TODO it mostly seems to work except for the velocities thing. probably an issue because i didn't actually read the equation, try reading the equations.
-matrix_A = (rho * cp  * (sps.diags_array(get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten() + get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten() - get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten() - get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten())*edge_spacing/2 \
-    + rht @ (sps.diags_array(get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten())*edge_spacing/2) + top @ (sps.diags_array(get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten())*edge_spacing/2) - lft @ (sps.diags_array(get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten())*edge_spacing/2) - bot @ (sps.diags_array(get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten())*edge_spacing/2)) \
+# advection
+# (sps.diags_array(0.5 * (edge_spacing * (-get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten() + get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten()) + edge_spacing * (get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten() + -get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten()))) + 0.5 * edge_spacing * (lft * -get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten()[:,None] + rht * get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten()[:,None]) + 0.5 * edge_spacing * (top * get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten()[:,None] + bot * -get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten()[:,None]))
+matrix_A = (rho * cp  * (sps.diags_array(0.5 * (edge_spacing * (-get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten() + get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten()) + edge_spacing * (get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten() + -get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten())))\
+    + 0.5 * edge_spacing * (lft * -get_vx_vy(xspace-edge_spacing/2, yspace)[0].flatten()[:,None] + rht * get_vx_vy(xspace+edge_spacing/2, yspace)[0].flatten()[:,None]) \
+    + 0.5 * edge_spacing * (top * get_vx_vy(xspace, yspace+edge_spacing/2)[1].flatten()[:,None] + bot * -get_vx_vy(xspace, yspace-edge_spacing/2)[1].flatten()[:,None])) \
     + ((k*rht*edge_spacing/edge_spacing - sps.diags_array(k_mat_rht.flatten())*edge_spacing/edge_spacing) \
     + (k*top*edge_spacing/edge_spacing - sps.diags_array(k_mat_top.flatten())*edge_spacing/edge_spacing) \
     + (k*lft*edge_spacing/edge_spacing - sps.diags_array(k_mat_lft.flatten())*edge_spacing/edge_spacing) \
@@ -89,10 +92,10 @@ matrix_A = (rho * cp  * (sps.diags_array(get_vx_vy(xspace+edge_spacing/2, yspace
     / rho / cp / edge_spacing / edge_spacing
 
 vector_F = np.zeros_like(vector_T)
-vector_F[matrix_T.shape[1]-1::matrix_T.shape[1]]    += (rho * cp * vx[:,-1]*edge_spacing/2 + k_rht * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
-vector_F[-matrix_T.shape[1]:]                       += (rho * cp * vx[-1,:]*edge_spacing/2 + k_top * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
-vector_F[0:-1:matrix_T.shape[1]]                    += (rho * cp * vx[:, 0]*edge_spacing/2 + k_lft * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
-vector_F[0:matrix_T.shape[1]]                       += (rho * cp * vy[0, :]*edge_spacing/2 + k_bot * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[matrix_T.shape[1]-1::matrix_T.shape[1]]    += (0*rho * cp * vx[:,-1]*edge_spacing/2 + k_rht * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[-matrix_T.shape[1]:]                       += (0*rho * cp * vx[-1,:]*edge_spacing/2 + k_top * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[0:-1:matrix_T.shape[1]]                    += (0*rho * cp * vx[:, 0]*edge_spacing/2 + k_lft * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[0:matrix_T.shape[1]]                       += (0*rho * cp * vy[0, :]*edge_spacing/2 + k_bot * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
 
 breakpoint()
 # print(matrix_A)
@@ -158,7 +161,7 @@ def step_simple(matrix, t_step, v_x, v_y):
 plots = 3
 total = plots*50 *4*60
 history = [matrix_T.copy()]
-t_step = 0.01
+t_step = 0.001
 for i in np.arange(total):
     vector_T = step_RK1(vector_T, matrix_A, vector_F, t_step)
     history.append(np.reshape(vector_T, matrix_T.shape))
@@ -173,9 +176,9 @@ for index in np.arange(plots+1):
 fig.colorbar(mesh, ax=ax, label="Temperature")
 
 plots = 3
-total = plots*50 *4*60
+total = plots*50 *4*60 * 0.001
 history = [matrix_T.copy()]
-t_step = 0.1
+t_step = 1
 for i in np.arange(total):
     vector_T = step_RK4(vector_T, matrix_A, vector_F, t_step)
     history.append(np.reshape(vector_T, matrix_T.shape))
