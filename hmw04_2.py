@@ -7,7 +7,7 @@ import scipy.optimize as spo
 import scipy.special as spp
 
 w = 0.05
-h = 0.25
+h = 0.05
 bottom_spaces = 10
 edge_spacing = w/(bottom_spaces)
 x_centers = np.linspace(0, w, int(w/edge_spacing) + 1)[:-1] + edge_spacing/2
@@ -75,22 +75,25 @@ vector_T = matrix_T.flatten()
 vector_vx = vx.flatten()
 vector_vy = vy.flatten()
 
+# ((vx * T) + (vx+i * T+i))/2 + etc
+# vx * T + vy * T + (vx+i * T+i)/2
 
 # print(rht * edge_spacing/edge_spacing + top * edge_spacing/edge_spacing - lft * edge_spacing/edge_spacing - bot * edge_spacing/edge_spacing)
 # TODO it mostly seems to work except for the velocities thing. probably an issue because i didn't actually read the equation, try reading the equations.
-matrix_A = (rho * cp  * (sps.diags_array(vector_vx*edge_spacing/2 + vector_vy*edge_spacing/2 + vector_vx*edge_spacing/2 + vector_vy*edge_spacing/2) \
-    + rht @ (sps.diags_array(vector_vx)*edge_spacing/2) + top @ (sps.diags_array(vector_vy)*edge_spacing/2) + lft @ (sps.diags_array(vector_vx)*edge_spacing/2) + bot @ (sps.diags_array(vector_vy)*edge_spacing/2)) \
+matrix_A = (rho * cp  * (0*sps.diags_array(vector_vx + vector_vy) + rht*vector_vx/2 + top*vector_vy/2 - lft*vector_vx/2 - bot*vector_vy/2)*edge_spacing \
     + ((k*rht*edge_spacing/edge_spacing - sps.diags_array(k_mat_rht.flatten())*edge_spacing/edge_spacing) \
     + (k*top*edge_spacing/edge_spacing - sps.diags_array(k_mat_top.flatten())*edge_spacing/edge_spacing) \
     + (k*lft*edge_spacing/edge_spacing - sps.diags_array(k_mat_lft.flatten())*edge_spacing/edge_spacing) \
     + (k*bot*edge_spacing/edge_spacing - sps.diags_array(k_mat_bot.flatten())*edge_spacing/edge_spacing))) \
     / rho / cp / edge_spacing / edge_spacing
 
+breakpoint()
+
 vector_F = np.zeros_like(vector_T)
 vector_F[matrix_T.shape[1]-1::matrix_T.shape[1]]    += (rho * cp * vx[:,-1]*edge_spacing/2 + k_rht * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
-vector_F[-matrix_T.shape[1]:]                       += (rho * cp * vx[-1,:]*edge_spacing/2 + k_top * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
-vector_F[0:-1:matrix_T.shape[1]]                    += (rho * cp * vx[:, 0]*edge_spacing/2 + k_lft * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
-vector_F[0:matrix_T.shape[1]]                       += (rho * cp * vy[0, :]*edge_spacing/2 + k_bot * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[-matrix_T.shape[1]:]                       += (rho * cp * vy[0, :]*edge_spacing/2 + k_top * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[0:-1:matrix_T.shape[1]]                    += (rho * cp *-vx[:, 0]*edge_spacing/2 + k_lft * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
+vector_F[0:matrix_T.shape[1]]                       += (rho * cp *-vy[-1,:]*edge_spacing/2 + k_bot * edge_spacing/edge_spacing * edge_spacing) / rho / cp / edge_spacing / edge_spacing * T_amb
 
 
 # print(matrix_A)
