@@ -1,4 +1,4 @@
-# AI use statement: Google Gemini 3.1 Pro was used to convert the original MATLAB script to Python with the following prompt: " Can you convert the attached MATLAB script into a Python script? Ideally, it should be possible to do a line-to-line comparison of the two scripts wherever possible."
+# AI use statement: Google Gemini 3.1 Pro was used to convert the original MATLAB script to Python with the following prompt: "Can you convert the attached MATLAB script into a Python script? Ideally, it should be possible to do a line-to-line comparison of the two scripts wherever possible."
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -84,7 +84,7 @@ ax.add_patch(rect)
 ax.set_xlabel('x (m)')
 ax.set_ylabel('y (m)')
 ax.set_aspect('equal')
-plt.show()
+# plt.show()
 
 # %% PART 1 - You will need to update this code to incorporate transient effects.
 
