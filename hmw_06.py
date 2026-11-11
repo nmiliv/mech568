@@ -9,15 +9,16 @@ from scipy.sparse import diags
 import warnings
 import matplotlib.pyplot as plt
 
-demo = False
-LU = False
-jacobis = False
-gauss_seidels = False
-SORs = False
-conj_grads = False
-pre_conj_grads = False
+demo = True
+LU = True
+jacobis = True
+gauss_seidels = True
+SORs = True
+conj_grads = True
+pre_conj_grads = True
 sors_investigate = True
 part2 = True
+testing = False
 
 def LU_decomp_solve(A, b):
     n = A.shape[0]
@@ -216,7 +217,7 @@ def magic(n):
 # Parameters
 n = 1000
 tol = 1e-10
-max_iter = 50 # TODO change this back to 1000
+max_iter = 1000 # TODO change this back to 1000
 omeg = 1.3
 
 # System 1
@@ -225,7 +226,7 @@ A1 = A1.T @ A1
 b1 = np.ones(n)
 D1 = np.diag(np.diag(A1))
 M1 = D1
-print(f"rcond(A1) = {1.0 / np.linalg.cond(A1):e}")
+if demo: print(f"rcond(A1) = {1.0 / np.linalg.cond(A1):e}")
 
 # System 2 (Load from .mat files using scipy)
 data_A2 = loadmat('A2.mat')
@@ -234,7 +235,7 @@ data_b2 = loadmat('b2.mat')
 b2 = data_b2['BC_vec'].flatten().astype(float)
 D2 = np.diag(np.diag(A2))
 M2 = D2
-print(f"rcond(A2) = {1.0 / np.linalg.cond(A2):e}")
+if demo: print(f"rcond(A2) = {1.0 / np.linalg.cond(A2):e}")
 
 # System 3
 n3 = 2500
@@ -243,7 +244,7 @@ A3 = diags(diagonals, [-1, 0, 1], shape=(n3, n3)).toarray()
 b3 = np.ones(n3)
 D3 = np.diag(np.diag(A3))
 M3 = D3
-print(f"rcond(A3) = {1.0 / np.linalg.cond(A3):e}")
+if demo: print(f"rcond(A3) = {1.0 / np.linalg.cond(A3):e}")
 
 # System 4
 diagonals = [1 * np.ones(n3), 0 * np.ones(n3), -1 * np.ones(n3)]
@@ -251,7 +252,7 @@ A4 = diags(diagonals, [-1, 0, 1], shape=(n3, n3)).toarray()
 b4 = np.ones(n3)
 A4 = A4.T @ A4
 b4 = A4.T @ b4
-print(f"rcond(A4) = {1.0 / np.linalg.cond(A4):e}")
+if demo: print(f"rcond(A4) = {1.0 / np.linalg.cond(A4):e}")
 
 if LU:
     # Solve and display results for System 1 using LU Decomp
@@ -464,17 +465,17 @@ if sors_investigate:
     resids = []
     iters = []
     for omega in omegaspace:
-        x_omega, iter = SOR(A1, b1, omega, 1e-6, max_iter)
-        r_x_omega = np.linalg.norm(A1 @ x_omega - b1)
+        x_omega, iter = SOR(A2, b2, omega, 1e-10, max_iter)
+        r_x_omega = np.linalg.norm(A2 @ x_omega - b2)
         resids.append(r_x_omega)
         iters.append(iter)
     fig, ax = plt.subplots(1)
-    ax.plot(omegaspace, resids)
+    ax.semilogy(omegaspace, resids)
     ax.set_xlabel("SOR omega")
     ax.set_ylabel("residuals")
     ax.set_title("Effect of omega on residual value in SOR")
     fig, ax = plt.subplots(1)
-    ax.plot(omegaspace, resids)
+    ax.semilogy(omegaspace, iters)
     ax.set_xlabel("SOR omega")
     ax.set_ylabel("Iterations")
     ax.set_title("Effect of omega on convergence speed in SOR")
@@ -497,19 +498,19 @@ def solve_pent_LU(A, b):
     L2 = []
 
     for i in range(n-2):
-        L1.append(-dm1[i]/d0[i])
+        L1.append(dm1[i]/d0[i])
         # dm1[0] -= dm1[0]/d0[0] * d0[0]
         d0[i+1] -= dm1[i]/d0[i] * dp1[i]
         dp1[i+1] -= dm1[i]/d0[i] * dp2[i]
         # dp2[1] -= dm1[0]/d0[0] * 0
 
-        L2.append(-dm2[i]/d0[i])
+        L2.append(dm2[i]/d0[i])
         # dm2[0] -= dm2[0]/d0[0] * d0[0]
         dm1[i+1] -= dm2[i]/d0[i] * dp1[i]
         d0[i+2] -= dm2[i]/d0[i] * dp2[i]
         # dp1[2] -= dm2[0]/d0[0] * 0
         # dp2[2] -= dm2[0]/d0[0] * 0
-    L1.append(-dm1[n-2]/d0[n-2])
+    L1.append(dm1[n-2]/d0[n-2])
     d0[n-2+1] -= dm1[n-2]/d0[n-2] * dp1[n-2]
     # dp1[n-2+1] -= dm1[n-2]/do[n-2] * dp2[n-2]
 
@@ -521,7 +522,7 @@ def solve_pent_LU(A, b):
     Ld = b
     d = [b[0], b[1] - L1[0]*b[0]]
     for i in np.arange(2, n):
-        d.append(b[i] - L2[i-2]*d[i-2] - L1[i-2]*d[i-1])
+        d.append(b[i] - L2[i-2]*d[i-2] - L1[i-1]*d[i-1])
 
     Ux = d
     x = np.zeros(n)
@@ -546,8 +547,13 @@ def pent_SOR(A, b, omega, tol, max_iter):
         x_new[1] = (1 - omega) * x[1] + omega * (b[1] - sum1 - sum2) / A[1, 1]
         for i in np.arange(2, n-2):
             sum1 = A[i, i-2] * x_new[i-2] + A[i, i-1] * x_new[i-1]
-            sum2 = A[i, i+1] * x_new[i+1] + A[i, i+2] * x_new[i+2]
+            sum2 = A[i, i+1] * x[i+1] + A[i, i+2] * x[i+2]
             x_new[i] = (1 - omega) * x[i] + omega * (b[i] - sum1 - sum2) / A[i, i]
+        sum1 = A[-2, -2-2] * x_new[-2-2] + A[-2, -2-1] * x_new[-2-1]
+        sum2 = A[-2, -2+1] * x[-2+1]
+        x_new[-2] = (1 - omega) * x[-2] + omega * (b[-2] - sum1 - sum2) / A[-2, -2]
+        sum1 = A[-1, -1-2] * x_new[-1-2] + A[-1, -1-1] * x_new[-1-1]
+        x_new[-1] = (1 - omega) * x[-1] + omega * (b[-1] - sum1) / A[-1, -1]
 
         err = np.linalg.norm(x_new - x)
         x = x_new
@@ -555,15 +561,14 @@ def pent_SOR(A, b, omega, tol, max_iter):
 
     if iter_count == max_iter and tol < err:
         warnings.warn('Convergence not reached at maximum iteration count')
-
     return x, iter_count
 
 if part2:
     ## part 2
 
-
-    A_matrix = make_A(5000)
-    b = np.random.rand(5000)
+    n = 5000 # TODO this should be 5000
+    A_matrix = make_A(n)
+    b = np.random.rand(n)
 
     start = time.time()
     x = solve_pent_LU(A_matrix, b)
@@ -595,5 +600,148 @@ if part2:
     end = time.time()
     resid = np.linalg.norm(A_matrix @ x - b)
     print(f'Scipy sparse solver took {end-start} seconds to complete. {resid=}')
+
+if testing:
+    A = scipy.sparse.diags_array([-1, 1, -2, 1, -1], offsets=[-2, -1, 0, 1, 2], shape=(5, 5), dtype='float64').toarray()
+    print(A)
+    b = np.random.rand(5)
+    print(b)
+    # n = A.shape[0]
+    # A = A.astype(float).copy()
+    # b = b.astype(float).copy()
+    #
+    # # LU Decomposition
+    # U = A.copy()
+    # L = np.eye(n)
+    # for i in range(n - 1):
+    #     for j in range(i + 1, n):
+    #         L[j, i] = U[j, i] / U[i, i]
+    #         U[j, i:] = U[j, i:] - L[j, i] * U[i, i:]
+    #
+    # print("standard LU decomp")
+    # print("L")
+    # print(L)
+    # print("U")
+    # print(U)
+    # # Forward substitution (Ld = Pb)
+    # d = np.zeros(n)
+    # for i in range(n):
+    #     sum_val = np.dot(L[i, :i], d[:i]) if i > 0 else 0.0
+    #     d[i] = b[i] - sum_val
+    #
+    # # Backward substitution (Ux = d)
+    # x = np.zeros(n)
+    # for i in range(n - 1, -1, -1):
+    #     sum_val = np.dot(U[i, i:], x[i:])
+    #     x[i] = (d[i] - sum_val) / U[i, i]
+    # print(f'{d=}')
+    # print(f'{x=}')
+    #
+    # dm2 = np.ones(n-2) * A[0,2]
+    # dm1 = np.ones(n-1) * A[0,1]
+    # d0 = np.ones(n) * A[0,0]
+    # dp1 = np.ones(n-1) * A[0,1]
+    # dp2 = np.ones(n-2) * A[0,2]
+    # L1 = []
+    # L2 = []
+    #
+    # for i in range(n-2):
+    #     L1.append(dm1[i]/d0[i])
+    #     # dm1[0] -= dm1[0]/d0[0] * d0[0]
+    #     d0[i+1] -= dm1[i]/d0[i] * dp1[i]
+    #     dp1[i+1] -= dm1[i]/d0[i] * dp2[i]
+    #     # dp2[1] -= dm1[0]/d0[0] * 0
+    #
+    #     L2.append(dm2[i]/d0[i])
+    #     # dm2[0] -= dm2[0]/d0[0] * d0[0]
+    #     dm1[i+1] -= dm2[i]/d0[i] * dp1[i]
+    #     d0[i+2] -= dm2[i]/d0[i] * dp2[i]
+    #     # dp1[2] -= dm2[0]/d0[0] * 0
+    #     # dp2[2] -= dm2[0]/d0[0] * 0
+    # L1.append(dm1[n-2]/d0[n-2])
+    # d0[n-2+1] -= dm1[n-2]/d0[n-2] * dp1[n-2]
+    # # dp1[n-2+1] -= dm1[n-2]/do[n-2] * dp2[n-2]
+    #
+    # # dm1[n-2+1] -= dm2[n-2]/d0[n-2] * dp1[n-2]
+    # # d0[n-2+2] -= dm2[n-2]/d0[n-2] * dp2[n-2]
+    # # d0, dp1, and dp2 make up U
+    # # L1 and L2 make up L
+    # print(A)
+    # print(b)
+    # print("efficient LU decomp")
+    # print("L")
+    # print(L1)
+    # print(L2)
+    # print("U")
+    # print(d0)
+    # print(dp1)
+    # print(dp2)
+    #
+    # Ld = b
+    # d = [b[0], b[1] - L1[0]*b[0]]
+    # for i in np.arange(2, n):
+    #     d.append(b[i] - L2[i-2]*d[i-2] - L1[i-1]*d[i-1])
+    #
+    # Ux = d
+    # x = np.zeros(n)
+    # x[-1] = d[-1] / d0[-1]
+    # x[-2] = ((d[-2] - dp1[-1] * x[-1])/d0[-2])
+    # for i in np.arange(3, n+1):
+    #     x[-i] = ((d[-i] - dp1[1-i] * x[1-i] - dp2[2-i] * x[2-i])/d0[-i])
+    # print(f'{d=}')
+    # print(f'{x=}')
+
+    n = len(b)
+    x = np.zeros(n)
+    iter_count = 0
+    err = 1.0
+    omega = omeg
+
+    while iter_count < max_iter and err > tol:
+        x_new = np.zeros(n)
+        for i in range(n):
+            sum1 = np.dot(A[i, :i], x_new[:i]) if i > 0 else 0.0
+            sum2 = np.dot(A[i, i+1:], x[i+1:]) if i < n - 1 else 0.0
+
+            x_new[i] = (1 - omega) * x[i] + omega * (b[i] - sum1 - sum2) / A[i, i]
+
+        err = np.linalg.norm(x_new - x)
+        x = x_new
+        iter_count += 1
+
+    if iter_count == max_iter and tol < err:
+        warnings.warn('Convergence not reached at maximum iteration count')
+    print(f'{x=}\n{iter_count=}')
+
+    n = len(b)
+    x = np.zeros(n)
+    iter_count = 0
+    err = 1.0
+
+    while iter_count < max_iter and err > tol:
+        x_new = np.zeros(n)
+        sum2 = A[0, 1] * x[1] + A[0, 2] * x[2]
+        x_new[0] = (1 - omega) * x[0] + omega * (b[0] - sum2) / A[0, 0]
+        sum1 = A[1, 0] * x_new[0]
+        sum2 = A[1, 2] * x[2] + A[1, 3] * x[3]
+        x_new[1] = (1 - omega) * x[1] + omega * (b[1] - sum1 - sum2) / A[1, 1]
+        for i in np.arange(2, n-2):
+            sum1 = A[i, i-2] * x_new[i-2] + A[i, i-1] * x_new[i-1]
+            sum2 = A[i, i+1] * x[i+1] + A[i, i+2] * x[i+2]
+            x_new[i] = (1 - omega) * x[i] + omega * (b[i] - sum1 - sum2) / A[i, i]
+        sum1 = A[-2, -2-2] * x_new[-2-2] + A[-2, -2-1] * x_new[-2-1]
+        sum2 = A[-2, -2+1] * x[-2+1]
+        x_new[-2] = (1 - omega) * x[-2] + omega * (b[-2] - sum1 - sum2) / A[-2, -2]
+        sum1 = A[-1, -1-2] * x_new[-1-2] + A[-1, -1-1] * x_new[-1-1]
+        x_new[-1] = (1 - omega) * x[-1] + omega * (b[-1] - sum1) / A[-1, -1]
+
+        err = np.linalg.norm(x_new - x)
+        x = x_new
+        iter_count += 1
+
+    if iter_count == max_iter and tol < err:
+        warnings.warn('Convergence not reached at maximum iteration count')
+    print(f'{x=}\n{iter_count=}')
+
 
 plt.show()
